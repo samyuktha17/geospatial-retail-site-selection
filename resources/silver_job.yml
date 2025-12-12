@@ -1,0 +1,116 @@
+resources:
+  jobs:
+    silver_poi_processing:
+      name: "Silver - POI Cleaning"
+
+      tasks:
+        - task_key: "clean_pois"
+          notebook_task:
+            notebook_path: ../transformations/02_silver/clean_pois.ipynb
+            base_parameters:
+              catalog: "${var.catalog}"
+              bronze_schema: "${var.schema}"
+              silver_schema: "${var.schema}"
+              state_filter: "${var.state_filter}"
+              config_path: "${workspace.file_path}/resources/configs/poi_config.yml"
+
+          libraries:
+            - pypi:
+                package: pyyaml
+
+          new_cluster:
+            num_workers: 2
+            node_type_id: "${var.node_type}"
+            spark_version: "17.3.x-scala2.13"
+            runtime_engine: "PHOTON"
+            data_security_mode: "SINGLE_USER"
+            spark_conf:
+              "spark.sql.adaptive.enabled": "true"
+              "spark.databricks.delta.retentionDurationCheck.enabled": "false"
+            custom_tags:
+              Environment: "${bundle.target}"
+              Layer: "silver"
+              Source: "osm_pois"
+
+          timeout_seconds: 3600
+          max_retries: 2
+
+        # Valhalla Isochrone Generation (Open-Source OSM Routing)
+        - task_key: "create_rmc_isochrones_urbanicity"
+          notebook_task:
+            notebook_path: ../transformations/02_silver/urbanicity_isochrones_valhalla.ipynb
+            base_parameters:
+              catalog: "${var.catalog}"
+              bronze_schema: "${var.schema}"
+              silver_schema: "${var.schema}"
+              gold_schema: "gold"
+              config_path: "${workspace.file_path}/resources/configs/isochrone_config.yml"
+              skip_setup: "yes"
+
+          libraries:
+            - pypi:
+                package: pyyaml
+            - pypi:
+                package: h3
+
+          new_cluster:
+            num_workers: 4
+            node_type_id: "${var.node_type}"
+            spark_version: "17.3.x-scala2.13"
+            runtime_engine: "PHOTON"
+            data_security_mode: "SINGLE_USER"
+            spark_conf:
+              "spark.sql.adaptive.enabled": "true"
+              "spark.databricks.delta.optimizeWrite.enabled": "true"
+            custom_tags:
+              Environment: "${bundle.target}"
+              Layer: "silver"
+              Source: "valhalla_urbanicity_isochrones"
+            init_scripts:
+              - workspace:
+                  destination: "${workspace.file_path}/resources/init_scripts/init-valhalla.sh"
+
+          timeout_seconds: 7200
+          max_retries: 2
+
+        # Seed Points Expansion Isochrones
+        - task_key: "create_seed_points_isochrones"
+          notebook_task:
+            notebook_path: ../transformations/02_silver/urbanicity_isochrones_valhalla.ipynb
+            base_parameters:
+              catalog: "${var.catalog}"
+              bronze_schema: "${var.schema}"
+              silver_schema: "${var.schema}"
+              gold_schema: "gold"
+              config_path: "${workspace.file_path}/resources/configs/isochrone_config.yml"
+              input_table: "${var.catalog}.${var.schema}.bronze_seed_points_expansion"
+              output_table_override: "seed_points_isochrones"
+              skip_setup: "yes"
+
+          libraries:
+            - pypi:
+                package: pyyaml
+            - pypi:
+                package: h3
+
+          new_cluster:
+            num_workers: 4
+            node_type_id: "${var.node_type}"
+            spark_version: "17.3.x-scala2.13"
+            runtime_engine: "PHOTON"
+            data_security_mode: "SINGLE_USER"
+            spark_conf:
+              "spark.sql.adaptive.enabled": "true"
+              "spark.databricks.delta.optimizeWrite.enabled": "true"
+            custom_tags:
+              Environment: "${bundle.target}"
+              Layer: "silver"
+              Source: "valhalla_seed_points_isochrones"
+            init_scripts:
+              - workspace:
+                  destination: "${workspace.file_path}/resources/init_scripts/init-valhalla.sh"
+
+          timeout_seconds: 7200
+          max_retries: 2
+
+      max_concurrent_runs: 1

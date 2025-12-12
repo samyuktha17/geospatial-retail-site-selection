@@ -1,0 +1,127 @@
+resources:
+  jobs:
+    bronze_census_ingestion:
+      name: "Bronze - Census Demographics"
+
+      tasks:
+        - task_key: "ingest_census_demographics"
+          notebook_task:
+            notebook_path: ../transformations/01_bronze/census_demographics.ipynb
+            base_parameters:
+              catalog: "${var.catalog}"
+              bronze_schema: "${var.schema}"
+              census_api_key: "${var.census_api_key}"
+              census_data_volume: "/Volumes/${var.catalog}/${var.schema}/census_data/"
+              config_path: "${workspace.file_path}/resources/configs/census_variables.yml"
+              acs_year: "${var.acs_year}"
+              state_fips: "${var.state_fips}"
+
+          libraries:
+            - pypi:
+                package: pyyaml
+
+          new_cluster:
+            num_workers: 2
+            node_type_id: "${var.node_type}"
+            spark_version: "17.3.x-scala2.13"
+            runtime_engine: "PHOTON"
+            data_security_mode: "SINGLE_USER"
+            spark_conf:
+              "spark.sql.adaptive.enabled": "true"
+              "spark.databricks.delta.retentionDurationCheck.enabled": "false"
+            custom_tags:
+              Environment: "${bundle.target}"
+              Layer: "bronze"
+              Source: "census_demographics"
+
+          timeout_seconds: 3600
+          max_retries: 2
+
+        - task_key: "ingest_census_boundaries"
+          notebook_task:
+            notebook_path: ../transformations/01_bronze/census_boundaries.ipynb
+            base_parameters:
+              catalog: "${var.catalog}"
+              bronze_schema: "${var.schema}"
+              boundary_data_volume: "/Volumes/${var.catalog}/${var.schema}/boundary_data/"
+              state_fips: "${var.state_fips}"
+              year: "${var.acs_year}"
+
+          new_cluster:
+            num_workers: 2
+            node_type_id: "${var.node_type}"
+            spark_version: "17.3.x-scala2.13"
+            runtime_engine: "PHOTON"
+            spark_conf:
+              "spark.sql.adaptive.enabled": "true"
+              "spark.databricks.delta.retentionDurationCheck.enabled": "false"
+            custom_tags:
+              Environment: "${bundle.target}"
+              Layer: "bronze"
+              Source: "census_boundaries"
+
+          timeout_seconds: 3600
+          max_retries: 2
+
+        - task_key: "download_osm_data"
+          notebook_task:
+            notebook_path: ../transformations/01_bronze/osm_download.ipynb
+            base_parameters:
+              catalog: "${var.catalog}"
+              bronze_schema: "${var.schema}"
+              osm_data_volume: "/Volumes/${var.catalog}/${var.schema}/osm_data/"
+              osm_url: "${var.osm_url}"
+              region: "${var.osm_region}"
+
+          new_cluster:
+            num_workers: 2
+            node_type_id: "${var.node_type}"
+            spark_version: "17.3.x-scala2.13"
+            runtime_engine: "PHOTON"
+            data_security_mode: "SINGLE_USER"
+            spark_conf:
+              "spark.sql.adaptive.enabled": "true"
+              "spark.databricks.delta.retentionDurationCheck.enabled": "false"
+            custom_tags:
+              Environment: "${bundle.target}"
+              Layer: "bronze"
+              Source: "osm"
+
+          timeout_seconds: 3600
+          max_retries: 2
+
+        - task_key: "extract_pois"
+          depends_on:
+            - task_key: "download_osm_data"
+          notebook_task:
+            notebook_path: ../transformations/01_bronze/extract_pois.ipynb
+            base_parameters:
+              catalog: "${var.catalog}"
+              bronze_schema: "${var.schema}"
+              osm_region: "${var.osm_region}"
+              config_path: "${workspace.file_path}/resources/configs/poi_config.yml"
+
+          libraries:
+            - pypi:
+                package: pyosmium
+            - pypi:
+                package: pyyaml
+
+          new_cluster:
+            num_workers: 2
+            node_type_id: "${var.node_type}"
+            spark_version: "17.3.x-scala2.13"
+            runtime_engine: "PHOTON"
+            data_security_mode: "SINGLE_USER"
+            spark_conf:
+              "spark.sql.adaptive.enabled": "true"
+              "spark.databricks.delta.retentionDurationCheck.enabled": "false"
+            custom_tags:
+              Environment: "${bundle.target}"
+              Layer: "bronze"
+              Source: "osm_pois"
+
+          timeout_seconds: 7200
+          max_retries: 2
+
+      max_concurrent_runs: 1

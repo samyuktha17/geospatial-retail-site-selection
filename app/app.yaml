@@ -1,0 +1,8 @@
+command: ["streamlit", "run", "app.py", "--server.port", "8000", "--server.headless", "true"]
+env:
+  - name: DATABRICKS_SERVER_HOSTNAME
+    value: e2-demo-west.cloud.databricks.com
+  - name: DATABRICKS_HTTP_PATH
+    value: /sql/1.0/warehouses/75fd8278393d07eb
+  - name: DATABRICKS_TOKEN
+    valueFrom: secret

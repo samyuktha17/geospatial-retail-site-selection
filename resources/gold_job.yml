@@ -1,0 +1,133 @@
+resources:
+  jobs:
+    gold_feature_engineering:
+      name: "Gold - H3 Feature Engineering"
+
+      tasks:
+        - task_key: "create_h3_features"
+          notebook_task:
+            notebook_path: ../transformations/02_silver/create_h3_features.ipynb
+            base_parameters:
+              catalog: "${var.catalog}"
+              bronze_schema: "${var.schema}"
+              silver_schema: "${var.schema}"
+              gold_schema: "${var.schema}"
+              state_fips: "${var.state_fips}"
+              config_path: "${workspace.file_path}/resources/configs/h3_features_config.yml"
+
+          libraries:
+            - pypi:
+                package: pyyaml
+
+          new_cluster:
+            num_workers: 4
+            node_type_id: "${var.node_type}"
+            spark_version: "17.3.x-scala2.13"
+            runtime_engine: "PHOTON"
+            data_security_mode: "SINGLE_USER"
+            spark_conf:
+              "spark.sql.adaptive.enabled": "true"
+              "spark.databricks.delta.retentionDurationCheck.enabled": "false"
+              "spark.databricks.delta.optimizeWrite.enabled": "true"
+              "spark.databricks.delta.autoCompact.enabled": "true"
+            custom_tags:
+              Environment: "${bundle.target}"
+              Layer: "gold"
+              Source: "h3_features"
+
+          timeout_seconds: 7200
+          max_retries: 2
+
+        - task_key: "aggregate_rmc_trade_area_features"
+          depends_on:
+            - task_key: "create_h3_features"
+          notebook_task:
+            notebook_path: ../transformations/03_gold/aggregate_trade_area_features.ipynb
+            base_parameters:
+              catalog: "${var.catalog}"
+              silver_schema: "${var.schema}"
+              gold_schema: "${var.schema}"
+              config_path: "${workspace.file_path}/resources/configs/h3_features_config.yml"
+
+          libraries:
+            - pypi:
+                package: pyyaml
+
+          new_cluster:
+            num_workers: 4
+            node_type_id: "${var.node_type}"
+            spark_version: "17.3.x-scala2.13"
+            runtime_engine: "PHOTON"
+            data_security_mode: "SINGLE_USER"
+            spark_conf:
+              "spark.sql.adaptive.enabled": "true"
+              "spark.databricks.delta.optimizeWrite.enabled": "true"
+            custom_tags:
+              Environment: "${bundle.target}"
+              Layer: "gold"
+              Source: "rmc_trade_area_features"
+
+          timeout_seconds: 3600
+          max_retries: 2
+
+        - task_key: "aggregate_seed_points_trade_area_features"
+          depends_on:
+            - task_key: "create_h3_features"
+          notebook_task:
+            notebook_path: ../transformations/03_gold/aggregate_trade_area_features.ipynb
+            base_parameters:
+              catalog: "${var.catalog}"
+              silver_schema: "${var.schema}"
+              gold_schema: "${var.schema}"
+              config_path: "${workspace.file_path}/resources/configs/h3_features_config.yml"
+              trade_area_table: "${var.catalog}.${var.schema}.silver_seed_points_isochrones"
+              output_table_override: "seed_points_trade_area_features"
+
+          libraries:
+            - pypi:
+                package: pyyaml
+
+          new_cluster:
+            num_workers: 4
+            node_type_id: "${var.node_type}"
+            spark_version: "17.3.x-scala2.13"
+            runtime_engine: "PHOTON"
+            data_security_mode: "SINGLE_USER"
+            spark_conf:
+              "spark.sql.adaptive.enabled": "true"
+              "spark.databricks.delta.optimizeWrite.enabled": "true"
+            custom_tags:
+              Environment: "${bundle.target}"
+              Layer: "gold"
+              Source: "seed_points_trade_area_features"
+
+          timeout_seconds: 3600
+          max_retries: 2
+
+        - task_key: "predict_seed_point_sales"
+          depends_on:
+            - task_key: "create_h3_features"
+          notebook_task:
+            notebook_path: ../transformations/03_gold/predict_seed_point_sales.ipynb
+            base_parameters:
+              catalog: "${var.catalog}"
+              gold_schema: "${var.schema}"
+
+          new_cluster:
+            num_workers: 2
+            node_type_id: "${var.node_type}"
+            spark_version: "17.3.x-scala2.13"
+            runtime_engine: "PHOTON"
+            data_security_mode: "SINGLE_USER"
+            spark_conf:
+              "spark.sql.adaptive.enabled": "true"
+              "spark.databricks.delta.optimizeWrite.enabled": "true"
+            custom_tags:
+              Environment: "${bundle.target}"
+              Layer: "gold"
+              Source: "seed_points_expansion"
+
+          timeout_seconds: 3600
+          max_retries: 2
+
+      max_concurrent_runs: 1
